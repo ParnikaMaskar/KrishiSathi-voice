@@ -10,36 +10,58 @@ FarmVoice is an Expo mobile app + a Python WebSocket voice server that helps far
 ## Architecture
 
 ```mermaid
-flowchart TD
-  A[Mobile App (Expo / React Native)] -->|WebSocket (ws://...:8765)| B[Python WebSocket Server (server/app.py)]
+graph TD
 
-  A -->|Sensor updates (direct or via ESP32 feed)| D[Farm Sensors / ESP32]
-  D -->|SENSOR_DATA| B
+A["Mobile App - Expo React Native"]
+B["Python WebSocket Server"]
+D["Farm Sensors ESP32"]
 
-  B -->|STT: audio transcription| C1[Groq Whisper (cloud)]
-  B -->|Chat generation| C2[Ollama LLM (local)\nphi3:mini]
+C1["Groq Whisper"]
+C2["Ollama phi3 mini"]
 
-  B -->|Weather fetch| E[OpenWeatherMap API]
+E["OpenWeatherMap API"]
 
-  B -->|TRANSCRIPT| A
-  B -->|RESPONSE (short farm advice)| A
+A -->|WebSocket| B
+
+A -->|Sensor Updates| D
+D -->|Sensor Data| B
+
+B -->|Audio Transcription| C1
+B -->|Generate Response| C2
+
+B -->|Weather Request| E
+
+B -->|Transcript| A
+B -->|Farm Advice| A
 ```
 
 ```mermaid
 flowchart LR
-  U[User speaks] -->|Record audio| M[Mobile App]
-  M -->|Send {type: AUDIO_BLOB, audio: base64}| WS[WebSocket Server]
 
-  WS -->|Decode base64 -> temp_recording.wav| STT[Groq Whisper (STT)]
-  STT -->|TRANSCRIPT text| WS
+U["User"]
+M["Mobile App"]
+WS["WebSocket Server"]
 
-  WS -->|Fetch weather| OW[OpenWeatherMap]
-  WS -->|Read last sensor values| SENS[latest_farm_data (in-memory)]
+STT["Groq Whisper"]
+OW["OpenWeatherMap"]
+SENS["Sensor Data"]
 
-  WS -->|Build system prompt (language rules + context)| LLM[Ollama chat (phi3:mini)]
-  LLM -->|Short farm advice| WS
-  WS -->|Send {type: RESPONSE, text}| M
-  M -->|App speaks/displays response| U
+LLM["Ollama phi3 mini"]
+
+U -->|Speak| M
+M -->|Audio Blob| WS
+
+WS -->|Transcribe| STT
+STT -->|Transcript| WS
+
+WS -->|Fetch Weather| OW
+WS -->|Read Sensors| SENS
+
+WS -->|Build Context| LLM
+LLM -->|Generate Advice| WS
+
+WS -->|Response| M
+M -->|Display Advice| U
 ```
 
 ---
