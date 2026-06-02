@@ -1,50 +1,158 @@
-# Welcome to your Expo app 👋
+# FarmVoice (FarmVoice_v2)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+FarmVoice is an Expo mobile app + a Python WebSocket voice server that helps farmers get short, actionable advice using:
+- **Voice transcription (STT)** via **Groq Whisper**
+- **Local AI responses** via **Ollama** (`phi3:mini`)
+- **Live context** from **OpenWeatherMap** + latest sensor values received over WebSocket
 
-## Get started
+---
 
-1. Install dependencies
+## Architecture
 
+```mermaid
+flowchart TD
+  A[Mobile App (Expo / React Native)] -->|WebSocket (ws://...:8765)| B[Python WebSocket Server (server/app.py)]
+
+  A -->|Sensor updates (direct or via ESP32 feed)| D[Farm Sensors / ESP32]
+  D -->|SENSOR_DATA| B
+
+  B -->|STT: audio transcription| C1[Groq Whisper (cloud)]
+  B -->|Chat generation| C2[Ollama LLM (local)\nphi3:mini]
+
+  B -->|Weather fetch| E[OpenWeatherMap API]
+
+  B -->|TRANSCRIPT| A
+  B -->|RESPONSE (short farm advice)| A
+```
+
+```mermaid
+flowchart LR
+  U[User speaks] -->|Record audio| M[Mobile App]
+  M -->|Send {type: AUDIO_BLOB, audio: base64}| WS[WebSocket Server]
+
+  WS -->|Decode base64 -> temp_recording.wav| STT[Groq Whisper (STT)]
+  STT -->|TRANSCRIPT text| WS
+
+  WS -->|Fetch weather| OW[OpenWeatherMap]
+  WS -->|Read last sensor values| SENS[latest_farm_data (in-memory)]
+
+  WS -->|Build system prompt (language rules + context)| LLM[Ollama chat (phi3:mini)]
+  LLM -->|Short farm advice| WS
+  WS -->|Send {type: RESPONSE, text}| M
+  M -->|App speaks/displays response| U
+```
+
+---
+
+## Key components
+
+### Mobile app (Expo)
+- Location: `app/`
+- Stack: Expo + React Native + expo-router
+
+### Voice/AI server (Python)
+- Location: `server/app.py`
+- Transport: WebSocket on **port 8765**
+- Responsibilities:
+  1. Receive audio and sensor updates
+  2. Transcribe audio with **Groq Whisper**
+  3. Generate farm advice with **Ollama** using weather + sensors
+  4. Respond back to the client
+
+---
+
+## WebSocket message protocol
+
+### Client → Server
+- **`SENSOR_DATA`**
+  - Example payload:
+    ```json
+    {
+      "type": "SENSOR_DATA",
+      "data": {
+        "temperature": "26.5",
+        "humidity": "61",
+        "soil_moisture": "34"
+      }
+    }
+    ```
+- **`AUDIO_BLOB`**
+  - Example payload:
+    ```json
+    {
+      "type": "AUDIO_BLOB",
+      "audio": "<base64 wav bytes>"
+    }
+    ```
+
+### Server → Client
+- **`TRANSCRIPT`** (sent after STT)
+  ```json
+  { "type": "TRANSCRIPT", "text": "..." }
+  ```
+- **`RESPONSE`** (sent after Ollama response)
+  ```json
+  { "type": "RESPONSE", "text": "..." }
+  ```
+
+---
+
+## Configuration (.env)
+
+### Backend environment variables
+Create `server/.env` with (minimum):
+
+```env
+GROQ_API_KEY=your_groq_key
+OPENWEATHER_API_KEY=your_openweather_key
+CITY_NAME=Pune
+```
+
+Notes:
+- If `GROQ_API_KEY` is missing, the server will warn and transcription will fail.
+- `OLLAMA_MODEL` is currently hard-coded in `server/app.py` to `phi3:mini`.
+
+---
+
+## Setup & run
+
+### 1) Start the backend (Python)
+1. Install dependencies:
+   ```bash
+   pip install -r server/requirements.txt
+   ```
+2. Run the server:
+   ```bash
+   python server/app.py
+   ```
+3. Expected output:
+   - `Voice Server running on ws://0.0.0.0:8765`
+
+### 2) Start the mobile app (Expo)
+1. Install frontend dependencies:
    ```bash
    npm install
    ```
-
-2. Start the app
-
+2. Start Expo:
    ```bash
    npx expo start
    ```
+3. Run on Android/iOS emulator or Expo Go.
 
-In the output, you'll find options to open the app in a
+---
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Project structure
+- `app/` — Expo app routes and UI
+- `components/` — shared UI components
+- `constants/` — theme/config constants
+- `hooks/` — custom React hooks
+- `server/` — WebSocket voice server
+  - `app.py` — main server
+  - `list_models.py` — helper to list Groq models (if used)
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+---
 
-## Get a fresh project
+## License
 
-When you're ready, run:
+(Add your license here if needed.)
 
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
